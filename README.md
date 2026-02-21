@@ -11,6 +11,112 @@ A complete, containerized media server stack using Docker Compose. This setup ro
 - **Utilities**: Portainer, FlareSolverr, Podgrab
 - **VPN**: WireGuard (Client Mode) with split tunneling for local access
 
+## Architecture & Workflow
+
+### 1. Installation Workflow
+```mermaid
+graph TD
+    A[Start] --> B(Clone Repository)
+    B --> C{Run ./setup.sh}
+    C -->|Creates Folders| D[configs/ & data/]
+    C -->|Generates Templates| E[wg0.conf.example]
+    
+    C --> F{Configuration}
+    F --> G[.env File]
+    F --> H[wg0.conf]
+    
+    G -->|Set User ID & TZ| I[Ready]
+    H -->|Add Private Key| I
+    
+    I --> J[docker compose up -d]
+    J --> K[Services Live]
+```
+
+### 2. Service Dependencies (The "Arr" Stack)
+How the applications talk to each other to automate your media.
+
+```mermaid
+graph LR
+    subgraph Request
+        Jellyseerr[Jellyseerr]
+    end
+
+    subgraph Managers
+        Sonarr[Sonarr (TV)]
+        Radarr[Radarr (Movies)]
+        Lidarr[Lidarr (Music)]
+        Bazarr[Bazarr (Subs)]
+    end
+
+    subgraph Indexers
+        Prowlarr[Prowlarr]
+    end
+
+    subgraph Downloaders_VPN
+        Transmission[Transmission]
+        RDTClient[RDTClient]
+        WG[WireGuard VPN]
+    end
+
+    subgraph Media_Server
+        Jellyfin[Jellyfin]
+    end
+
+    Jellyseerr -->|Requests| Sonarr
+    Jellyseerr -->|Requests| Radarr
+    
+    Prowlarr -->|Indexers| Sonarr
+    Prowlarr -->|Indexers| Radarr
+    Prowlarr -->|Indexers| Lidarr
+    
+    Sonarr -->|Downloads| Transmission
+    Radarr -->|Downloads| Transmission
+    Radarr -->|Downloads| RDTClient
+    
+    Transmission -->|Traffic| WG
+    RDTClient -->|Traffic| WG
+    
+    Sonarr -->|Files| Jellyfin
+    Radarr -->|Files| Jellyfin
+```
+
+### 3. Network & VPN Routing
+Visualizing how traffic flows. Critical: Download clients are isolated behind the VPN, but you can still access their Web UIs from the LAN thanks to the `PostUp` rules.
+
+```mermaid
+graph TD
+    User[User / LAN]
+    
+    subgraph Docker_Host
+        subgraph Direct_Access
+            Jellyfin
+            Sonarr
+            Radarr
+            Prowlarr
+        end
+        
+        subgraph VPN_Tunnel
+            WireGuard
+            Transmission
+            RDTClient
+        end
+    end
+    
+    Internet_Direct[Internet (ISP IP)]
+    Internet_VPN[Internet (VPN IP)]
+
+    User -->|Local Access (Port 8096)| Jellyfin
+    User -->|Local Access (Port 8989)| Sonarr
+    User -->|Local Access (Port 9091)| Transmission
+    
+    Jellyfin -->|Metadata/Art| Internet_Direct
+    Sonarr -->|TVDB Info| Internet_Direct
+    
+    Transmission -->|Torrent Traffic| WireGuard
+    RDTClient -->|Debrid Traffic| WireGuard
+    WireGuard -->|Encrypted| Internet_VPN
+```
+
 ## Prerequisites
 
 - A strict Linux server (Ubuntu/Debian recommended)
