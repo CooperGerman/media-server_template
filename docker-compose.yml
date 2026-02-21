@@ -1,0 +1,242 @@
+services:
+  # WireGuard VPN
+  wireguard:
+    image: linuxserver/wireguard
+    container_name: wireguard
+    extra_hosts:
+      - "media-server:host-gateway"
+    networks:
+      default:
+        aliases:
+          - media-server
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_DIR}/wireguard:/config
+      - /lib/modules:/lib/modules
+    ports:
+      - ${TRANSMISSION_PEER_PORT}:${TRANSMISSION_PEER_PORT}
+      - ${TRANSMISSION_PEER_PORT}:${TRANSMISSION_PEER_PORT}/udp
+      - ${TRANSMISSION_WEB_PORT}:${TRANSMISSION_WEB_PORT}
+      - ${RDTCLIENT_PORT}:${RDTCLIENT_PORT}
+      - ${WIREGUARD_PORT}:${WIREGUARD_PORT}/udp
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+    restart: unless-stopped
+
+  # Transmission with WireGuard
+  transmission:
+    image: linuxserver/transmission
+    container_name: transmission
+    network_mode: service:wireguard
+    depends_on:
+      - wireguard
+    volumes:
+      - ${CONFIG_DIR}/transmission:/config
+      - ${DATA_DIR}/server:/data
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - TRANSMISSION_RPC_WHITELIST_ENABLED=false
+      - TRANSMISSION_RPC_HOST_WHITELIST_ENABLED=false
+    restart: unless-stopped
+
+  # RDTClient - AllDebrid Download Client
+  rdtclient:
+    image: rogerfar/rdtclient
+    container_name: rdtclient
+    network_mode: service:wireguard
+    depends_on:
+      - wireguard
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_DIR}/rdtclient:/data/db
+      - ${DATA_DIR}/server/torrents:/data/downloads
+    restart: unless-stopped
+
+  # Jellyfin Media Server
+  jellyfin:
+    container_name: jellyfin
+    extra_hosts:
+      - "media-server:host-gateway"
+    image: ghcr.io/linuxserver/jellyfin
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - '${JELLYFIN_PORT}:8096'
+    volumes:
+      - '${CONFIG_DIR}/jellyfin:/config'
+      - '${DATA_DIR}/server/media:/data/media'
+    restart: unless-stopped
+
+  # Sonarr - TV Show Management
+  sonarr:
+    container_name: sonarr
+    extra_hosts:
+      - "media-server:host-gateway"
+    image: linuxserver/sonarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - '${SONARR_PORT}:8989'
+    volumes:
+      - '${CONFIG_DIR}/sonarr:/config'
+      - '${DATA_DIR}/server:/data'
+    restart: unless-stopped
+
+  # Radarr - Movie Management
+  radarr:
+    container_name: radarr
+    extra_hosts:
+      - "media-server:host-gateway"
+    image: linuxserver/radarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - '${RADARR_PORT}:7878'
+    volumes:
+      - '${CONFIG_DIR}/radarr:/config'
+      - '${DATA_DIR}/server:/data'
+    restart: unless-stopped
+
+  # Bazarr - Subtitle Management
+  bazarr:
+    container_name: bazarr
+    extra_hosts:
+      - "media-server:host-gateway"
+    image: linuxserver/bazarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - '${BAZARR_PORT}:6767'
+    volumes:
+      - '${CONFIG_DIR}/bazarr:/config'
+      - '${DATA_DIR}/server:/data'
+    restart: unless-stopped
+
+  # Lidarr - Music Management
+  lidarr:
+    container_name: lidarr
+    extra_hosts:
+      - "media-server:host-gateway"
+    image: linuxserver/lidarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - '${LIDARR_PORT}:8686'
+    volumes:
+      - '${CONFIG_DIR}/lidarr:/config'
+      - '${DATA_DIR}/server:/data'
+    restart: unless-stopped
+
+  # Podgrab - Podcast Manager
+  podgrab:
+    container_name: podgrab
+    extra_hosts:
+      - "media-server:host-gateway"
+    image: akhilrex/podgrab
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - '${PODGRAB_PORT}:8080'
+    volumes:
+      - '${CONFIG_DIR}/podgrab:/config'
+      - '${DATA_DIR}/server/podcasts:/assets'
+    restart: unless-stopped
+
+  # Prowlarr - Indexer Manager
+  prowlarr:
+    container_name: prowlarr
+    extra_hosts:
+      - "media-server:host-gateway"
+    image: 'linuxserver/prowlarr:latest'
+    ports:
+      - '${PROWLARR_PORT}:9696'
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - '${CONFIG_DIR}/prowlarr:/config'
+    restart: unless-stopped
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+      - 8.8.4.4
+
+  # FlareSolverr - Cloudflare bypass
+  flaresolverr:
+    container_name: flaresolverr
+    extra_hosts:
+      - "media-server:host-gateway"
+    image: 'ghcr.io/flaresolverr/flaresolverr:latest'
+    ports:
+      - '${FLARESOLVERR_PORT}:8191'
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    restart: unless-stopped
+
+  # Portainer - Docker Management UI
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    extra_hosts:
+      - "media-server:host-gateway"
+    ports:
+      - ${PORTAINER_PORT}:9000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    restart: always
+
+  # Seerr (Jellyseer) - Media Request Manager
+  seerr:
+    image: ghcr.io/seerr-team/seerr:develop
+    init: true
+    container_name: seerr
+    extra_hosts:
+      - "media-server:host-gateway"
+    user: "${PUID}:${PGID}"
+    environment:
+      - LOG_LEVEL=debug
+      - TZ=${TZ}
+      - PORT=5055
+    ports:
+      - '${SEERR_PORT}:5055'
+    volumes:
+      - '${CONFIG_DIR}/seerr:/app/config'
+      - '${DATA_DIR}/server:/data'
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/status || exit 1
+      start_period: 20s
+      timeout: 3s
+      interval: 15s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  portainer_data:

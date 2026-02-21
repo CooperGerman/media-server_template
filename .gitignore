@@ -1,0 +1,26 @@
+# Configs
+configs/wireguard/wg_confs/*.conf
+!configs/wireguard/wg_confs/wg0.conf.example
+
+configs/**/*.db
+configs/**/*.db-wal
+configs/**/*.db-shm
+configs/**/*.log
+configs/**/*.pid
+
+# Data
+data/
+downloads/
+media/
+torrents/
+
+# Keys and Secrets
+*.key
+*.cert
+*.pem
+credentials.json
+api_key
+
+# OS
+.DS_Store
+Thumbs.db
