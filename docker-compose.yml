@@ -23,7 +23,6 @@ services:
       - ${TRANSMISSION_PEER_PORT}:${TRANSMISSION_PEER_PORT}
       - ${TRANSMISSION_PEER_PORT}:${TRANSMISSION_PEER_PORT}/udp
       - ${TRANSMISSION_WEB_PORT}:${TRANSMISSION_WEB_PORT}
-      - ${RDTCLIENT_PORT}:${RDTCLIENT_PORT}
       - ${WIREGUARD_PORT}:${WIREGUARD_PORT}/udp
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
@@ -52,9 +51,8 @@ services:
   rdtclient:
     image: rogerfar/rdtclient
     container_name: rdtclient
-    network_mode: service:wireguard
-    depends_on:
-      - wireguard
+    ports:
+      - ${RDTCLIENT_PORT}:6500
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
