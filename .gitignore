@@ -24,3 +24,7 @@ api_key
 # OS
 .DS_Store
 Thumbs.db
+
+# IDEs and Editors
+.vscode/
+.history/

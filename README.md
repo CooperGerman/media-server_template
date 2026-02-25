@@ -52,10 +52,10 @@ graph LR
         Prowlarr[Prowlarr]
     end
 
-    subgraph Downloaders_VPN
+    subgraph Downloaders
         Transmission[Transmission]
-        RDTClient[RDTClient]
         WG[WireGuard VPN]
+        RDTClient[RDTClient]
     end
 
     subgraph Media_Server
@@ -74,6 +74,7 @@ graph LR
     Radarr -->|Downloads| RDTClient
 
     Transmission -->|Traffic| WG
+    WG -->|Encrypted| Internet
     RDTClient -->|Direct| Internet
 
     Sonarr -->|Files| Jellyfin
@@ -93,6 +94,7 @@ graph TD
             Sonarr
             Radarr
             Prowlarr
+            RDTClient
         end
 
         subgraph VPN_Tunnel
@@ -107,6 +109,7 @@ graph TD
     User -->|Local Access Port 8096| Jellyfin
     User -->|Local Access Port 8989| Sonarr
     User -->|Local Access Port 9091| Transmission
+    User -->|Local Access Port 6500| RDTClient
 
     Jellyfin -->|Metadata/Art| Internet_Direct
     Sonarr -->|TVDB Info| Internet_Direct
@@ -163,6 +166,16 @@ nano .env
 ```bash
 docker compose up -d
 ```
+
+### 6. Optional: Tailscale VPN
+For secure remote access without port forwarding, we recommend installing Tailscale directly on your host machine (not in Docker).
+
+1. **Install Tailscale**: Follow the instructions for your OS at [tailscale.com/download](https://tailscale.com/download).
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   ```
+2. **Authenticate**: Run `sudo tailscale up` and follow the link to log in.
+3. **Access Services**: Once connected, you can access your services using the host's Tailscale IP (e.g., `http://100.x.y.z:8096` for Jellyfin).
 
 ## Service Access
 

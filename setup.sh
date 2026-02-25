@@ -2,7 +2,7 @@
 
 # 1. Copy config folders
 # We check if folders exist, if not create them
-SERVICES=("wireguard" "transmission" "rdtclient" "jellyfin" "sonarr" "radarr" "bazarr" "lidarr" "podgrab" "prowlarr" "seerr")
+SERVICES=("wireguard" "transmission" "rdtclient" "jellyfin" "sonarr" "radarr" "bazarr" "lidarr" "prowlarr" "seerr" "audiobookshelf" "flaresolverr")
 
 mkdir -p configs
 mkdir -p data
