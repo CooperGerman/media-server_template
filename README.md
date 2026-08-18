@@ -201,6 +201,27 @@ For secure remote access without port forwarding, we recommend installing Tailsc
 2. **Authenticate**: Run `sudo tailscale up` and follow the link to log in.
 3. **Access Services**: Once connected, you can access your services using the host's Tailscale IP (e.g., `http://100.x.y.z:8096` for Jellyfin).
 
+
+## Misc Notes
+
+### Used plugins for jellyfin from post here:
+
+https://www.reddit.com/r/jellyfin/comments/1rbswf1/must_have_plugins_of_2026/
+
+Some plugins may be conflicting current list is :
+
+![current extensions](current_extensions.png)
+
+### connect server to internet
+
+https://www.youtube.com/watch?v=t7pNRmvy1BQ
+
+Used media server setup with duck dns instead of cloudflare
+
+### Notes
+
+Why proxy wont work for audiobookshelf, need to set ip.
+
 ## Service Access
 
 Once running, you can access your services at:
