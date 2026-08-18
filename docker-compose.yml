@@ -3,48 +3,76 @@ services:
   wireguard:
     image: linuxserver/wireguard
     container_name: wireguard
-    extra_hosts:
-      - "media-server:host-gateway"
-    networks:
-      default:
-        aliases:
-          - media-server
     cap_add:
       - NET_ADMIN
-      - SYS_MODULE
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-    volumes:
-      - ${CONFIG_DIR}/wireguard:/config
-      - /lib/modules:/lib/modules
-    ports:
-      - ${TRANSMISSION_PEER_PORT}:${TRANSMISSION_PEER_PORT}
-      - ${TRANSMISSION_PEER_PORT}:${TRANSMISSION_PEER_PORT}/udp
-      - ${TRANSMISSION_WEB_PORT}:${TRANSMISSION_WEB_PORT}
-      - ${WIREGUARD_PORT}:${WIREGUARD_PORT}/udp
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
-      - net.ipv6.conf.all.disable_ipv6=0
+    environment:
+      - PUID=1000
+      - PGID=1001
+      - TZ=Europe/Paris
+    ports:
+      - 9091:9091
+      - 51413:51413
+      - 51413:51413/udp
+      - 1080:1080
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+      - 8.8.4.4
+    volumes:
+      - /home/$USER/server/configs/wireguard:/config
     restart: unless-stopped
 
-  # Transmission with WireGuard
-  transmission:
-    image: linuxserver/transmission
-    container_name: transmission
-    network_mode: service:wireguard
+  # # Transmission with WireGuard
+  # transmission:
+  #   image: linuxserver/transmission
+  #   container_name: transmission
+  #   depends_on:
+  #     - wireguard
+  #   network_mode: "service:wireguard"
+  #   volumes:
+  #     - /home/$USER/server/configs/transmission:/config
+  #     - /mnt/data:/data
+  #     - /mnt/data/torrents/watch:/watch
+  #   environment:
+  #     - PUID=1000
+  #     - PGID=1001
+  #     - TZ=Europe/Paris
+  #     - TRANSMISSION_RPC_WHITELIST_ENABLED=false
+  #     - TRANSMISSION_RPC_HOST_WHITELIST_ENABLED=false
+  #   restart: unless-stopped
+
+  # SOCKS5 proxy behind WireGuard for slskd Soulseek traffic only
+  slskd-proxy:
+    image: serjs/go-socks5-proxy:latest
+    container_name: slskd-proxy
     depends_on:
       - wireguard
-    volumes:
-      - ${CONFIG_DIR}/transmission:/config
-      - ${DATA_DIR}/server:/data
+    network_mode: "service:wireguard"
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-      - TRANSMISSION_RPC_WHITELIST_ENABLED=false
-      - TRANSMISSION_RPC_HOST_WHITELIST_ENABLED=false
+      - PROXY_USER=slskd-proxy
+      - PROXY_PASSWORD=__PASSWORD__
+    restart: unless-stopped
+
+  # Soulseek (slskd) - Music Downloader
+  slskd:
+    container_name: slskd
+    image: slskd/slskd:latest
+    user: "1000:1001"
+    extra_hosts:
+      - "media-server:host-gateway"
+    environment:
+      - TZ=Europe/Paris
+      - SLSKD_REMOTE_CONFIGURATION=true
+    ports:
+      - '5030:5030'
+      - '50300:50300'
+      - '50300:50300/udp'
+    volumes:
+      - '/home/$USER/server/configs/slskd:/app'
+      - '/mnt/data/torrents/music:/downloads'
+      - '/mnt/data/media/music:/music:ro'
     restart: unless-stopped
 
   # RDTClient - AllDebrid Download Client
@@ -52,14 +80,14 @@ services:
     image: rogerfar/rdtclient
     container_name: rdtclient
     ports:
-      - ${RDTCLIENT_PORT}:6500
+      - '6500:6500'
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
+      - PUID=1000
+      - PGID=1001
+      - TZ=Europe/Paris
     volumes:
-      - ${CONFIG_DIR}/rdtclient:/data/db
-      - ${DATA_DIR}/server/torrents:/data/downloads
+      - /home/$USER/server/configs/rdtclient:/data/db
+      - /mnt/data/torrents:/data/downloads
     restart: unless-stopped
 
   # Jellyfin Media Server
@@ -68,15 +96,57 @@ services:
     extra_hosts:
       - "media-server:host-gateway"
     image: ghcr.io/linuxserver/jellyfin
+    runtime: nvidia
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
+      - PUID=1000
+      - PGID=1001
+      - TZ=Europe/Paris
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
     ports:
-      - '${JELLYFIN_PORT}:8096'
+      - '8096:8096'
     volumes:
-      - '${CONFIG_DIR}/jellyfin:/config'
-      - '${DATA_DIR}/server/media:/data/media'
+      - '/home/$USER/server/configs/jellyfin:/config'
+      - '/mnt/data/media:/data/media'
+    restart: unless-stopped
+  # Nginx Proxy Manager - reverse proxy for public access
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    ports:
+      - '80:80'
+      - '81:81'
+      - '443:443'
+    volumes:
+      - /home/$USER/server/configs/nginx-proxy-manager/data:/data
+      - /home/$USER/server/configs/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
+    restart: unless-stopped
+
+  # DuckDNS - keeps your free hostname pointed at your home IP
+  duckdns:
+    image: lscr.io/linuxserver/duckdns:latest
+    container_name: duckdns
+    environment:
+      - PUID=1000
+      - PGID=1001
+      - TZ=Europe/Paris
+      - SUBDOMAINS=ylp-media,ylp-suwayomi,ylp-kavita,ylp-pod
+      - TOKEN=__API_TOKEN__
+      - LOG_FILE=true
+    volumes:
+      - /home/$USER/server/configs/duckdns:/config
+    restart: unless-stopped
+
+  # Unbound - local DNS with split-DNS override for DuckDNS hostnames
+  unbound:
+    image: mvance/unbound:latest
+    container_name: unbound
+    ports:
+      - '53:53/tcp'
+      - '53:53/udp'
+    volumes:
+      - /home/$USER/server/configs/unbound/unbound.conf:/opt/unbound/etc/unbound/unbound.conf:ro
+      - /home/$USER/server/configs/unbound/local-overrides.conf:/opt/unbound/etc/unbound/local-overrides.conf:ro
     restart: unless-stopped
 
   # Sonarr - TV Show Management
@@ -86,14 +156,14 @@ services:
       - "media-server:host-gateway"
     image: linuxserver/sonarr
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
+      - PUID=1000
+      - PGID=1001
+      - TZ=Europe/Paris
     ports:
-      - '${SONARR_PORT}:8989'
+      - '8989:8989'
     volumes:
-      - '${CONFIG_DIR}/sonarr:/config'
-      - '${DATA_DIR}/server:/data'
+      - '/home/$USER/server/configs/sonarr:/config'
+      - '/mnt/data:/data'
     restart: unless-stopped
 
   # Radarr - Movie Management
@@ -103,32 +173,32 @@ services:
       - "media-server:host-gateway"
     image: linuxserver/radarr
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
+      - PUID=1000
+      - PGID=1001
+      - TZ=Europe/Paris
     ports:
-      - '${RADARR_PORT}:7878'
+      - '7878:7878'
     volumes:
-      - '${CONFIG_DIR}/radarr:/config'
-      - '${DATA_DIR}/server:/data'
+      - '/home/$USER/server/configs/radarr:/config'
+      - '/mnt/data:/data'
     restart: unless-stopped
 
-  # Bazarr - Subtitle Management
-  bazarr:
-    container_name: bazarr
-    extra_hosts:
-      - "media-server:host-gateway"
-    image: linuxserver/bazarr
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-    ports:
-      - '${BAZARR_PORT}:6767'
-    volumes:
-      - '${CONFIG_DIR}/bazarr:/config'
-      - '${DATA_DIR}/server:/data'
-    restart: unless-stopped
+  # # Bazarr - Subtitle Management
+  # bazarr:
+  #   container_name: bazarr
+  #   extra_hosts:
+  #     - "media-server:host-gateway"
+  #   image: linuxserver/bazarr
+  #   environment:
+  #     - PUID=1000
+  #     - PGID=1001
+  #     - TZ=Europe/Paris
+  #   ports:
+  #     - '6767:6767'
+  #   volumes:
+  #     - '/home/$USER/server/configs/bazarr:/config'
+  #     - '/mnt/data:/data'
+  #   restart: unless-stopped
 
   # Lidarr - Music Management
   lidarr:
@@ -137,14 +207,14 @@ services:
       - "media-server:host-gateway"
     image: linuxserver/lidarr
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
+      - PUID=1000
+      - PGID=1001
+      - TZ=Europe/Paris
     ports:
-      - '${LIDARR_PORT}:8686'
+      - '8686:8686'
     volumes:
-      - '${CONFIG_DIR}/lidarr:/config'
-      - '${DATA_DIR}/server:/data'
+      - '/home/$USER/server/configs/lidarr:/config'
+      - '/mnt/data:/data'
     restart: unless-stopped
 
   # Audiobookshelf - Audiobooks and Podcast Manager
@@ -154,16 +224,16 @@ services:
     extra_hosts:
       - "media-server:host-gateway"
     ports:
-      - ${AUDIOBOOKSHELF_PORT}:80
+      - 13378:80
     environment:
-      - AUDIOBOOKSHELF_UID=${PUID}
-      - AUDIOBOOKSHELF_GID=${PGID}
-      - TZ=${TZ}
+      - AUDIOBOOKSHELF_UID=1000
+      - AUDIOBOOKSHELF_GID=1001
+      - TZ=Europe/Paris
     volumes:
-      - ${DATA_DIR}/server/media/audiobooks:/audiobooks
-      - ${DATA_DIR}/server/media/podcasts:/podcasts
-      - ${CONFIG_DIR}/audiobookshelf/config:/config
-      - ${CONFIG_DIR}/audiobookshelf/metadata:/metadata
+      - /mnt/data/media/audiobooks:/audiobooks
+      - /mnt/data/media/podcasts:/podcasts
+      - /home/$USER/server/configs/audiobookshelf/config:/config
+      - /home/$USER/server/configs/audiobookshelf/metadata:/metadata
     restart: unless-stopped
 
   # Prowlarr - Indexer Manager
@@ -173,13 +243,13 @@ services:
       - "media-server:host-gateway"
     image: 'linuxserver/prowlarr:latest'
     ports:
-      - '${PROWLARR_PORT}:9696'
+      - '9696:9696'
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
+      - PUID=1000
+      - PGID=1001
+      - TZ=Europe/Paris
     volumes:
-      - '${CONFIG_DIR}/prowlarr:/config'
+      - '/home/$USER/server/configs/prowlarr:/config'
     restart: unless-stopped
     dns:
       - 1.1.1.1
@@ -193,11 +263,11 @@ services:
       - "media-server:host-gateway"
     image: 'ghcr.io/flaresolverr/flaresolverr:latest'
     ports:
-      - '${FLARESOLVERR_PORT}:8191'
+      - '8191:8191'
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
+      - PUID=1000
+      - PGID=1001
+      - TZ=Europe/Paris
     restart: unless-stopped
 
   # Portainer - Docker Management UI
@@ -207,7 +277,7 @@ services:
     extra_hosts:
       - "media-server:host-gateway"
     ports:
-      - ${PORTAINER_PORT}:9000
+      - 9000:9000
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -220,16 +290,16 @@ services:
     container_name: seerr
     extra_hosts:
       - "media-server:host-gateway"
-    user: "${PUID}:${PGID}"
+    user: "1000:1001"
     environment:
       - LOG_LEVEL=debug
-      - TZ=${TZ}
+      - TZ=Europe/Paris
       - PORT=5055
     ports:
-      - '${SEERR_PORT}:5055'
+      - '5055:5055'
     volumes:
-      - '${CONFIG_DIR}/seerr:/app/config'
-      - '${DATA_DIR}/server:/data'
+      - '/home/$USER/server/configs/seerr:/app/config'
+      - '/mnt/data:/data'
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/status || exit 1
       start_period: 20s
@@ -238,5 +308,94 @@ services:
       retries: 3
     restart: unless-stopped
 
+  # Soularr - Soulseek integration for Lidarr
+  soularr:
+    image: mrusse08/soularr:latest
+    container_name: soularr
+    hostname: soularr
+    user: "1000:1001"
+    environment:
+      - TZ=Europe/Paris
+      - SCRIPT_INTERVAL=300
+    volumes:
+      - '/home/$USER/server/configs/soularr:/data'
+      - '/mnt/data/torrents/music:/downloads'
+    restart: unless-stopped
+    depends_on:
+      - lidarr
+      - slskd
+
+  # Filebrowser - Web File Browser
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    container_name: filebrowser
+    ports:
+      - '8080:80'
+    environment:
+      - PUID=1000
+      - PGID=1001
+      - TZ=Europe/Paris
+    volumes:
+      - /mnt/data:/srv
+      - /home/$USER/server/configs/filebrowser/filebrowser.db:/database/filebrowser.db
+      - /home/$USER/server/configs/filebrowser/settings.json:/.filebrowser.json
+    restart: unless-stopped
+
+  # # Manga/Comic Server
+  # kavita:
+  #   image: jvmilazz0/kavita:latest
+  #   container_name: kavita
+  #   environment:
+  #     - PUID=1000
+  #     - PGID=1001
+  #     - TZ=Europe/Paris
+  #   volumes:
+  #     - /home/$USER/server/configs/kavita:/kavita/config
+  #     - /mnt/data/media/comics:/comics
+  #     - /mnt/data/media/manga:/manga
+  #     - /mnt/data/media/books:/books
+  #   ports:
+  #     - 5000:5000
+  #   restart: unless-stopped
+
+  # mylar3:
+  #   image: lscr.io/linuxserver/mylar3:latest
+  #   extra_hosts:
+  #     - "media-server:host-gateway"
+  #   environment:
+  #       - PUID=1000
+  #       - PGID=1001
+  #       - TZ=Europe/Paris
+  #   volumes:
+  #     - ../configs/mylar3/config:/config
+  #     - /mnt/data/media/comics:/comics
+  #     - /mnt/data/downloads:/downloads
+  #   ports:
+  #     - 8090:8090
+  #   dns:
+  #     - 1.1.1.1
+  #     - 8.8.8.8
+  #     - 8.8.4.4
+  #   restart: unless-stopped
+
+  suwayomi:
+    image: ghcr.io/suwayomi/suwayomi-server:preview
+    container_name: suwayomi
+    # user: 1000:1000
+    environment:
+      - PUID=1000
+      - PGID=1001
+      - TZ=Europe/Paris
+      # Comment these out if you do not use the flaresolverr container at the bottom of this file
+      - FLARESOLVERR_ENABLED=true
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+    volumes:
+      - ../configs/suwayomi/data:/home/suwayomi/.local/share/Tachidesk
+      - /mnt/data/media/manga:/home/suwayomi/.local/share/Tachidesk/downloads/mangas
+    ports:
+      - "4567:4567"
+    restart: on-failure:3
+
 volumes:
+  # kapowarr-db:
   portainer_data:
